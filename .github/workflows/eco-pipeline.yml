@@ -1,0 +1,78 @@
+name: Eco-Audit (Con Histórico)
+
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  green-check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 1️⃣ Checkout Proyecto
+        uses: actions/checkout@v4
+
+      - name: 2️⃣ Checkout de las HERRAMIENTAS ECO (El runner)
+        uses: actions/checkout@v4
+        with:
+          repository: gorkazar7/sonar-emission-utils
+          path: eco-tools  # Lo descarga en una carpeta llamada 'eco-tools'
+
+      - name: Configurar Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Instalar Dependencias
+        # Ahora instalamos desde el requirements que incluye influxdb-client
+        run: pip install -r eco-tools/requirements.txt
+
+      - name: 🟢 Ejecutar Auditoría + Guardado Histórico
+        env:
+          # Configuración de InfluxDB (Secrets de GitHub)
+          # Si usas Influx Cloud o tu servidor propio:
+          INFLUXDB_URL: "https://us-east-1-1.aws.cloud2.influxdata.com"
+          INFLUXDB_TOKEN: "mzDnVmtj8dLOuE1Oo9CWaYWwBCJ0p6MU9ilTtlArl0heBCOk1_wqPEQk17OBZfksv44esWLmZYer-LBv7j8CRQ=="
+          INFLUXDB_ORG: "Dev Team"
+          INFLUXDB_BUCKET: "greenit"
+        run: |
+          # Si estás probando en local con ngrok, el URL sería tu dirección de ngrok
+          python eco-tools/emissions_runner_influx.py main.py
+
+      - name: 📊 Generar Resumen Visual en GitHub
+        if: always() # Se ejecuta aunque el script falle, para ver qué pasó
+        run: |
+          python -c "
+          import csv
+          import os
+          
+          try:
+              if not os.path.exists('emissions.csv'):
+                  print('No se encontró emissions.csv')
+                  exit(0)
+
+              with open('emissions.csv', 'r') as f:
+                  reader = csv.DictReader(f)
+                  row = next(reader)
+                  
+                  md = f'''### 🌿 Huella de Carbono del Push
+                  | Métrica | Valor | Unidad |
+                  | :--- | :--- | :--- |
+                  | **Emisiones CO2** | {float(row['emissions']):.8f} | kg |
+                  | **Energía CPU** | {float(row['cpu_energy']):.8f} | kWh |
+                  | **Duración** | {float(row['duration']):.2f} | seg |
+                  
+                  > 🌍 *Validado por CodeCarbon & Guardado en InfluxDB*
+                  '''
+                  
+                  with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
+                      summary.write(md)
+          except Exception as e:
+              print(f'Error visual: {e}')
+          "
+
+      - name: 📤 Guardar CSV (Backup)
+        uses: actions/upload-artifact@v4
+        with:
+          name: reporte-emisiones
+          path: emissions.csv
