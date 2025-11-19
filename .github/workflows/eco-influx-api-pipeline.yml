@@ -1,4 +1,4 @@
-name: Dual API Audit
+name: API PIPELINE
 
 on:
   push:

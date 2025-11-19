@@ -1,4 +1,4 @@
-name: Eco-Audit (Con Histórico)
+name: MAIN PIPELINE
 
 on:
   push:
