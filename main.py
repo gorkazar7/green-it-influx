@@ -11,7 +11,7 @@ def logica_de_negocio():
 
     # Simulamos carga de trabajo
     size = 15000
-    print(f"Procesando {size} elementos complejos...")
+    print(f"Procesando {size} elementos complejoss...")
 
     # Carga CPU
     data = [math.sqrt(i) * math.tan(i) for i in range(size)]
