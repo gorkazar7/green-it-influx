@@ -37,15 +37,18 @@ jobs:
           INFLUXDB_BUCKET: "greenit"
         run: |
           # Si estás probando en local con ngrok, el URL sería tu dirección de ngrok
-          python eco-tools/emissions_runner_influx.py main.py
+          python eco-tools/emissions_runner_influx_simple.py main.py
 
       - name: 📊 Generar Resumen Visual en GitHub
-        if: always() # Se ejecuta aunque el script falle, para ver qué pasó
+        if: always()
         run: |
           python -c "
           import csv
           import os
           
+          # Factor de conversión de agua (Litros por kWh)
+          WUE_AVG = 0.71
+
           try:
               if not os.path.exists('emissions.csv'):
                   print('No se encontró emissions.csv')
@@ -55,14 +58,20 @@ jobs:
                   reader = csv.DictReader(f)
                   row = next(reader)
                   
+                  energy_kwh = float(row['cpu_energy'])
+                  # Calculamos agua estimada
+                  water_l = energy_kwh * WUE_AVG
+                  
                   md = f'''### 🌿 Huella de Carbono del Push
                   | Métrica | Valor | Unidad |
                   | :--- | :--- | :--- |
-                  | **Emisiones CO2** | {float(row['emissions']):.8f} | kg |
-                  | **Energía CPU** | {float(row['cpu_energy']):.8f} | kWh |
-                  | **Duración** | {float(row['duration']):.2f} | seg |
+                  | **💧 Agua Estimada** | **{water_l * 1000:.2f}** | ml |
+                  | **💨 Emisiones CO2** | {float(row['emissions']):.8f} | kg |
+                  | **⚡ Energía CPU** | {energy_kwh:.8f} | kWh |
+                  | **⏱️ Duración** | {float(row['duration']):.2f} | seg |
                   
                   > 🌍 *Validado por CodeCarbon & Guardado en InfluxDB*
+                  > 💧 *Agua calc. con WUE {WUE_AVG} L/kWh*
                   '''
                   
                   with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:

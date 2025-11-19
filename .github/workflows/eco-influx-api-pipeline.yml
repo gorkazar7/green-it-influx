@@ -1,0 +1,107 @@
+name: Dual API Audit
+
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  comparative-audit:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Código
+        uses: actions/checkout@v4
+
+      - name: 2️⃣ Checkout de las HERRAMIENTAS ECO (El runner)
+        uses: actions/checkout@v4
+        with:
+          repository: gorkazar7/sonar-emission-utils
+          path: eco-tools  # Lo descarga en una carpeta llamada 'eco-tools'
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Instalar Deps Aplicación
+        run: pip install -r requirements.txt
+
+      - name: Instalar Dependencias ECO tool
+        # Ahora instalamos desde el requirements que incluye influxdb-client
+        run: pip install -r eco-tools/requirements.txt
+
+      # --- EVALUACIÓN ENDPOINT 1 ---
+      - name: 🟢 Auditar Endpoint Matrices
+        env:
+          INFLUXDB_URL: "https://us-east-1-1.aws.cloud2.influxdata.com"
+          INFLUXDB_TOKEN: "mzDnVmtj8dLOuE1Oo9CWaYWwBCJ0p6MU9ilTtlArl0heBCOk1_wqPEQk17OBZfksv44esWLmZYer-LBv7j8CRQ=="
+          INFLUXDB_ORG: "Dev Team"
+          INFLUXDB_BUCKET: "greenit"
+        run: |
+          python eco-tools/emissions_runner_influx_api.py \
+            --tag type=api_test --tag endpoint=matrix_mult \
+            -- pytest -v -k matrix tests/
+          
+          mv emissions.csv emissions_matrix.csv
+
+      # --- EVALUACIÓN ENDPOINT 2 ---
+      - name: 🔵 Auditar Endpoint Cripto
+        env:
+          INFLUXDB_URL: "https://us-east-1-1.aws.cloud2.influxdata.com"
+          INFLUXDB_TOKEN: "mzDnVmtj8dLOuE1Oo9CWaYWwBCJ0p6MU9ilTtlArl0heBCOk1_wqPEQk17OBZfksv44esWLmZYer-LBv7j8CRQ=="
+          INFLUXDB_ORG: "Dev Team"
+          INFLUXDB_BUCKET: "greenit"
+        run: |
+          python eco-tools/emissions_runner_influx_api.py \
+            --tag type=api_test --tag endpoint=crypto_hash \
+            -- pytest -v -k crypto tests/
+          
+          mv emissions.csv emissions_crypto.csv
+
+      # --- REPORTE COMPARATIVO (AHORA CON AGUA) ---
+      - name: 📊 Generar Tabla Comparativa
+        if: always()
+        run: |
+          python -c "
+          import csv, os
+          
+          # Factor de conversión (Mismo que en emissions_runner_influx_api.py)
+          WUE_AVG = 0.71 
+
+          def get_metrics(filename):
+              try:
+                  with open(filename, 'r') as f:
+                      row = next(csv.DictReader(f))
+                      energy = float(row['cpu_energy'])
+                      # Calculamos agua aquí para visualización rápida
+                      water = energy * WUE_AVG 
+                      return {
+                          'co2': float(row['emissions']),
+                          'energy': energy,
+                          'duration': float(row['duration']),
+                          'water': water
+                      }
+              except: return None
+
+          m_matrix = get_metrics('emissions_matrix.csv')
+          m_crypto = get_metrics('emissions_crypto.csv')
+          
+          if m_matrix and m_crypto:
+              md = f'''### 🆚 Comparativa de Sostenibilidad (Agua + CO2)
+              | Endpoint | 💧 Agua (ml) | 💨 CO2 (kg) | ⚡ Energía (kWh) | ⏱️ Duración (s) |
+              | :--- | :--- | :--- | :--- | :--- |
+              | **Matrices** 🧮 | **{m_matrix['water']*1000:.2f} ml** | \`{m_matrix['co2']:.8f}\` | {m_matrix['energy']:.8f} | {m_matrix['duration']:.2f} |
+              | **Cripto** 🔐 | **{m_crypto['water']*1000:.2f} ml** | \`{m_crypto['co2']:.8f}\` | {m_crypto['energy']:.8f} | {m_crypto['duration']:.2f} |
+              
+              > 💧 *Agua estimada usando WUE Avg (0.71 L/kWh)*
+              '''
+              with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as s: s.write(md)
+          "
+
+      - name: 📤 Subir CSVs
+        uses: actions/upload-artifact@v4
+        with:
+          name: reportes-comparativos
+          path: |
+            emissions_matrix.csv
+            emissions_crypto.csv
