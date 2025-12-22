@@ -48,6 +48,7 @@ descarga dinámicamente en el pipeline desde el repositorio central
 Necesitas una instancia de InfluxDB. Puedes usar la versión Cloud
 (gratuita) o levantarla en local:
 
+
 ``` bash
 cd monitoring
 docker-compose up -d
